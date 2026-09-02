@@ -1,0 +1,304 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="light">
+  <title>FitInteract Quick Annotator</title>
+  <link rel="stylesheet" href="./css/style.css">
+</head>
+<body>
+  <header class="app-header">
+    <div>
+      <h1>FitInteract Quick Annotator</h1>
+      <p class="privacy-notice">Offline Mode：视频与标注仅在本地浏览器处理，不会上传。</p>
+    </div>
+    <div class="header-actions">
+      <span id="mode-badge" class="mode-badge">Offline Mode</span>
+      <span id="online-profile" class="profile-chip online-only hidden"></span>
+      <a id="online-login-link" class="button secondary offline-only" href="./login.html">Online Mode</a>
+      <a id="admin-link" class="button secondary online-only hidden" href="./admin.html">管理后台</a>
+      <a id="offline-mode-link" class="button secondary online-only hidden" href="./index.html?mode=offline">Offline Mode</a>
+      <button id="logout-button" class="button secondary online-only hidden" type="button">退出登录</button>
+      <button id="new-task-button" class="button secondary offline-only" type="button">新建标注</button>
+    </div>
+  </header>
+
+  <main class="app-shell">
+    <section id="draft-banner" class="draft-banner hidden" aria-live="polite">
+      <span>检测到上次未完成标注，是否恢复？</span>
+      <div class="button-row">
+        <button id="restore-draft-button" class="button primary" type="button">恢复</button>
+        <button id="discard-draft-button" class="button secondary" type="button">放弃</button>
+      </div>
+    </section>
+
+    <div id="message-area" class="message hidden" role="status" aria-live="polite"></div>
+
+    <section id="online-task-panel" class="card online-only hidden">
+      <div class="section-heading compact-heading">
+        <div>
+          <h2>我的任务</h2>
+          <p><span id="online-progress">0 / 0 Completed</span></p>
+        </div>
+        <div class="task-filters">
+          <select id="online-dataset-filter" aria-label="按 Dataset 筛选">
+            <option value="all">全部 Dataset</option>
+          </select>
+          <select id="online-task-status-filter" aria-label="按任务状态筛选">
+            <option value="all">全部状态</option>
+            <option value="assigned">Assigned</option>
+            <option value="in_progress">In Progress</option>
+            <option value="completed">Completed</option>
+            <option value="reviewed">Reviewed</option>
+          </select>
+        </div>
+      </div>
+      <div id="online-task-loading" class="loading-line">Loading tasks…</div>
+      <div id="online-task-list" class="online-task-list"></div>
+      <div class="task-navigation">
+        <div class="button-row">
+          <button id="online-page-previous" class="button small secondary" type="button">上一页</button>
+          <span id="online-task-page" class="mono-text">0–0 / 0</span>
+          <button id="online-page-next" class="button small secondary" type="button">下一页</button>
+        </div>
+        <div class="button-row">
+          <button id="online-previous-task" class="button small secondary" type="button">上一条</button>
+          <span id="online-current-position" class="mono-text">尚未选择任务</span>
+          <button id="online-next-task" class="button small secondary" type="button">下一条</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="card setup-card">
+      <div class="section-heading">
+        <div>
+          <h2 id="setup-title">视频与标注信息</h2>
+          <p id="setup-description">本地视频仅用于播放；Video Path 是写入 JSON 的独立文本。</p>
+        </div>
+      </div>
+
+      <div class="form-grid two-columns">
+        <div class="field-group offline-only">
+          <label for="video-file">本地视频</label>
+          <div class="file-row">
+            <label class="button primary file-button" for="video-file">选择本地视频</label>
+            <input id="video-file" type="file" accept="video/*">
+            <span id="video-file-name" class="file-name">尚未选择</span>
+          </div>
+        </div>
+
+        <div class="field-group offline-only">
+          <label for="video-root-select">Video Root</label>
+          <div class="inline-controls">
+            <select id="video-root-select" aria-label="Video Root 模板"></select>
+            <input id="video-root-name" type="text" placeholder="模板名称，如 SPRINT" aria-label="Video Root 模板名称">
+          </div>
+          <input id="video-root-path" type="text" placeholder="dataset/SPRINT/long_context_clips/" aria-label="Video Root 路径">
+          <div class="compact-actions">
+            <button id="add-root-button" class="button small" type="button">新增</button>
+            <button id="update-root-button" class="button small secondary" type="button">更新</button>
+            <button id="delete-root-button" class="button small danger-ghost" type="button">删除</button>
+          </div>
+        </div>
+
+        <div class="field-group full-width offline-only">
+          <label for="video-path">Video Path <span class="required">*</span></label>
+          <input id="video-path" type="text" list="video-path-history" autocomplete="off" placeholder="写入 JSON 的视频路径，可随时手动修改">
+          <datalist id="video-path-history"></datalist>
+          <span class="field-help">选择 Video Root 后再选择视频，将自动拼接路径；浏览器无法读取真实绝对路径。</span>
+        </div>
+
+        <div id="online-task-summary" class="online-task-summary full-width online-only hidden">
+          <div><span>Dataset</span><strong id="online-task-dataset">--</strong></div>
+          <div><span>Category</span><strong id="online-task-category">--</strong></div>
+          <div><span>Filename</span><strong id="online-task-filename">--</strong></div>
+          <div><span>Status</span><strong id="online-task-status">--</strong></div>
+          <div class="task-id"><span>Task ID</span><strong id="online-task-id">--</strong></div>
+        </div>
+
+        <div class="field-group full-width">
+          <label for="query-text">Query <span class="required">*</span></label>
+          <div class="preset-toolbar">
+            <select id="query-preset-select" aria-label="Query 模板"></select>
+            <input id="query-preset-name" class="offline-only" type="text" placeholder="模板名称" aria-label="Query 模板名称">
+            <button id="save-query-preset" class="button small offline-only" type="button">保存为模板</button>
+            <button id="update-query-preset" class="button small secondary offline-only" type="button">更新模板</button>
+            <button id="delete-query-preset" class="button small danger-ghost offline-only" type="button">删除模板</button>
+          </div>
+          <textarea id="query-text" rows="3" placeholder="输入用户的动作指导请求"></textarea>
+        </div>
+      </div>
+    </section>
+
+    <div class="workspace-grid">
+      <section class="card video-card">
+        <div class="section-heading compact-heading">
+          <div>
+            <h2>视频与精确时间轴</h2>
+            <p>标注模式：点击依次设置 Start / End；定位模式：点击跳转播放位置。</p>
+          </div>
+          <label class="speed-control" for="playback-rate">倍速
+            <select id="playback-rate">
+              <option value="0.5">0.5×</option>
+              <option value="0.75">0.75×</option>
+              <option value="1" selected>1×</option>
+              <option value="1.25">1.25×</option>
+              <option value="1.5">1.5×</option>
+              <option value="2">2×</option>
+            </select>
+          </label>
+        </div>
+
+        <div class="video-stage">
+          <video id="video-player" controls preload="metadata">
+            当前浏览器不支持 HTML5 视频播放。
+          </video>
+          <div id="video-placeholder" class="video-placeholder">请选择本地视频或在线任务开始标注</div>
+        </div>
+
+        <div class="time-readout" aria-live="off">
+          <div><span>Current</span><strong id="current-time">00.00 s</strong></div>
+          <div><span>Duration</span><strong id="duration-time">00.00 s</strong></div>
+        </div>
+
+        <div class="timeline-toolbar">
+          <div class="segmented" aria-label="时间轴模式">
+            <button id="mode-annotate" class="segment active" type="button" aria-pressed="true">标注模式</button>
+            <button id="mode-seek" class="segment" type="button" aria-pressed="false">定位模式</button>
+          </div>
+          <span id="timeline-mode-status" class="mode-status">下一次点击：设置 Start</span>
+          <div class="zoom-controls" aria-label="时间轴缩放">
+            <span>缩放</span>
+            <button id="zoom-out" class="icon-button" type="button" title="缩小">−</button>
+            <div id="zoom-levels" class="segmented compact">
+              <button class="segment active" type="button" data-zoom="1">1×</button>
+              <button class="segment" type="button" data-zoom="2">2×</button>
+              <button class="segment" type="button" data-zoom="4">4×</button>
+              <button class="segment" type="button" data-zoom="8">8×</button>
+            </div>
+            <button id="zoom-in" class="icon-button" type="button" title="放大">+</button>
+          </div>
+        </div>
+
+        <div id="timeline-viewport" class="timeline-viewport" tabindex="0" aria-label="精确视频时间轴">
+          <div id="timeline-content" class="timeline-content">
+            <div id="timeline-ticks" class="timeline-ticks"></div>
+            <div id="timeline-track" class="timeline-track">
+              <div id="timeline-selection" class="timeline-selection hidden"></div>
+              <div id="timeline-progress" class="timeline-progress"></div>
+              <button id="start-handle" class="timeline-handle start hidden" type="button" aria-label="拖动 Start"></button>
+              <button id="end-handle" class="timeline-handle end hidden" type="button" aria-label="拖动 End"></button>
+              <div id="playhead" class="playhead" aria-hidden="true"></div>
+            </div>
+            <div class="timeline-edge-labels"><span>0.00</span><span id="timeline-end-label">0.00</span></div>
+          </div>
+        </div>
+
+        <div class="window-editor">
+          <div class="time-input-group">
+            <label for="start-input">Start</label>
+            <div class="time-input"><input id="start-input" type="number" min="0" step="0.01" placeholder="--"><span>s</span></div>
+          </div>
+          <div class="time-arrow">→</div>
+          <div class="time-input-group">
+            <label for="end-input">End</label>
+            <div class="time-input"><input id="end-input" type="number" min="0" step="0.01" placeholder="--"><span>s</span></div>
+          </div>
+          <div class="window-duration"><span>区间时长</span><strong id="window-duration">-- s</strong></div>
+        </div>
+
+        <div class="control-groups">
+          <div class="button-row wrap">
+            <button id="set-start-button" class="button secondary" type="button">当前时间设为 Start</button>
+            <button id="set-end-button" class="button secondary" type="button">当前时间设为 End</button>
+            <button id="clear-window-button" class="button secondary" type="button">清除 Start/End</button>
+            <button id="play-range-button" class="button primary" type="button">播放选择区间</button>
+          </div>
+          <div class="nudge-controls">
+            <span>微调播放位置</span>
+            <button class="button small secondary" type="button" data-nudge="-0.10">−0.10</button>
+            <button class="button small secondary" type="button" data-nudge="-0.01">−0.01</button>
+            <button class="button small secondary" type="button" data-nudge="0.01">+0.01</button>
+            <button class="button small secondary" type="button" data-nudge="0.10">+0.10</button>
+          </div>
+        </div>
+      </section>
+
+      <aside class="card annotations-card">
+        <div class="section-heading compact-heading">
+          <div>
+            <h2 id="annotations-title">Annotations (0)</h2>
+            <p>按 Start 时间升序排列</p>
+          </div>
+        </div>
+        <div id="annotation-list" class="annotation-list">
+          <div class="empty-state">尚未添加 annotation</div>
+        </div>
+      </aside>
+    </div>
+
+    <section class="card text-card">
+      <div class="section-heading compact-heading">
+        <div>
+          <h2>Response / Text</h2>
+          <p>填写当前时间窗口对应的指导或纠错文本。</p>
+        </div>
+      </div>
+      <div class="preset-toolbar">
+        <select id="text-preset-select" aria-label="Text 模板"></select>
+        <input id="text-preset-name" class="offline-only" type="text" placeholder="模板名称" aria-label="Text 模板名称">
+        <button id="save-text-preset" class="button small offline-only" type="button">保存为模板</button>
+        <button id="update-text-preset" class="button small secondary offline-only" type="button">更新模板</button>
+        <button id="delete-text-preset" class="button small danger-ghost offline-only" type="button">删除模板</button>
+      </div>
+      <textarea id="annotation-text" rows="4" placeholder="输入当前时间窗口的 annotation text"></textarea>
+      <div class="annotation-actions">
+        <button id="save-annotation-button" class="button primary large" type="button">+ 添加 Annotation</button>
+        <button id="cancel-edit-button" class="button secondary hidden" type="button">取消编辑</button>
+        <button id="online-save-draft" class="button secondary online-only hidden" type="button">保存云端草稿</button>
+        <button id="online-submit" class="button primary large online-only hidden" type="button">提交完成</button>
+        <button id="online-next-incomplete" class="button secondary online-only hidden" type="button">下一条未完成任务</button>
+        <span id="online-save-state" class="save-state online-only hidden">Not saved</span>
+        <span class="shortcut-hint">快捷键：S / E 设置边界，A 添加，R 播放区间，Ctrl+S 下载</span>
+      </div>
+      <div id="online-completed-warning" class="inline-warning online-only hidden">该任务已完成；继续编辑并重新保存会更新云端结果。</div>
+    </section>
+
+    <section class="card export-card">
+      <div class="section-heading compact-heading">
+        <div>
+          <h2>JSON Preview</h2>
+          <p>预览内容严格遵循 FitInteract 参考模板字段。</p>
+        </div>
+      </div>
+      <pre id="json-preview" tabindex="0"></pre>
+      <div class="download-row">
+        <div class="field-group filename-field">
+          <label for="json-filename">JSON 文件名</label>
+          <input id="json-filename" type="text" value="fitinteract_annotation.json">
+        </div>
+        <button id="download-json-button" class="button primary large" type="button">下载 JSON</button>
+      </div>
+    </section>
+  </main>
+
+  <footer id="app-footer" class="app-footer">
+    Offline Mode · 不发送网络请求 · 数据仅保存在当前浏览器与下载的 JSON 中
+  </footer>
+
+  <script src="./vendor/supabase-js-2.112.4.js"></script>
+  <script src="./js/supabase-config.js"></script>
+  <script src="./js/supabase-client.js"></script>
+  <script src="./js/auth.js"></script>
+  <script src="./js/presets.js"></script>
+  <script src="./js/video.js"></script>
+  <script src="./js/timeline.js"></script>
+  <script src="./js/annotation.js"></script>
+  <script src="./js/json-export.js"></script>
+  <script src="./js/online-templates.js"></script>
+  <script src="./js/online-annotations.js"></script>
+  <script src="./js/online-tasks.js"></script>
+  <script src="./js/app.js"></script>
+</body>
+</html>

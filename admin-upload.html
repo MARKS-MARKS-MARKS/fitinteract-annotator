@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="light">
+  <title>视频上传 · FitInteract</title>
+  <link rel="stylesheet" href="./css/style.css">
+  <link rel="stylesheet" href="./css/admin.css">
+</head>
+<body class="admin-page">
+  <header class="app-header">
+    <div>
+      <h1>FitInteract Video Upload</h1>
+      <p>管理员分片上传 · Private Storage · TUS resumable upload</p>
+    </div>
+    <div class="admin-header-actions">
+      <span id="upload-profile" class="profile-chip">正在验证权限…</span>
+      <a class="button secondary" href="./admin.html">返回 Dashboard</a>
+      <button id="upload-logout" class="button secondary" type="button">退出登录</button>
+    </div>
+  </header>
+
+  <main class="admin-shell">
+    <div id="upload-message" class="message hidden" role="alert" aria-live="polite"></div>
+
+    <section class="card">
+      <div class="section-heading">
+        <div>
+          <h2>上传视频</h2>
+          <p>文件会直接上传到 Supabase 私有 Storage；大文件采用 6 MB 分片并可续传。</p>
+        </div>
+      </div>
+
+      <form id="upload-form" class="upload-form">
+        <div class="field-group">
+          <label for="upload-dataset">Dataset</label>
+          <input id="upload-dataset" type="text" list="dataset-suggestions" placeholder="例如 SPRINT" autocomplete="off" required>
+          <datalist id="dataset-suggestions"><option value="SPRINT"></option><option value="QEVD"></option><option value="FitInteract"></option></datalist>
+        </div>
+        <div class="field-group">
+          <label for="upload-category">Category</label>
+          <input id="upload-category" type="text" list="category-suggestions" placeholder="例如 long_context_clips" autocomplete="off" required>
+          <datalist id="category-suggestions"><option value="long_context_clips"></option><option value="exercise"></option><option value="daily_activity"></option></datalist>
+        </div>
+        <div class="field-group full">
+          <label for="upload-files">本地视频（可多选）</label>
+          <input id="upload-files" type="file" accept="video/*" multiple>
+          <p class="help-text">Storage 路径格式：dataset/category/UUID__安全文件名。不会把本机绝对路径写入数据库。</p>
+        </div>
+        <div class="button-row full">
+          <button id="start-upload" class="button primary" type="submit">开始上传队列</button>
+          <button id="clear-upload-queue" class="button secondary" type="button">清空已完成/上传失败项</button>
+        </div>
+      </form>
+    </section>
+
+    <section class="card">
+      <div class="section-heading compact-heading">
+        <div><h2>上传队列</h2><p id="upload-summary">尚未选择文件</p></div>
+      </div>
+      <div id="upload-queue" class="upload-queue">
+        <div class="empty-state">选择一个或多个视频后，文件信息会显示在这里。</div>
+      </div>
+    </section>
+  </main>
+
+  <script src="./vendor/supabase-js-2.112.4.js"></script>
+  <script src="./vendor/tus-js-client-4.3.1.min.js"></script>
+  <script src="./js/supabase-config.js"></script>
+  <script src="./js/supabase-client.js"></script>
+  <script src="./js/auth.js"></script>
+  <script src="./js/admin-upload.js"></script>
+</body>
+</html>

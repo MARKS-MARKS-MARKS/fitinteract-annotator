@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="light">
+  <title>管理后台 · FitInteract</title>
+  <link rel="stylesheet" href="./css/style.css">
+  <link rel="stylesheet" href="./css/admin.css">
+</head>
+<body class="admin-page">
+  <header class="app-header">
+    <div>
+      <h1>FitInteract Admin Dashboard</h1>
+      <p>视频、任务、统一模板、进度和标注导出</p>
+    </div>
+    <div class="admin-header-actions">
+      <span id="admin-profile" class="profile-chip">正在验证权限…</span>
+      <a class="button secondary" href="./index.html?mode=online">标注页面</a>
+      <a class="button primary" href="./admin-upload.html">上传视频</a>
+      <button id="admin-logout" class="button secondary" type="button">退出登录</button>
+    </div>
+  </header>
+
+  <main class="admin-shell">
+    <div id="admin-message" class="message hidden" role="alert" aria-live="polite"></div>
+
+    <section class="admin-grid" aria-label="Dashboard 概览">
+      <div class="metric-card"><span>Total Videos</span><strong id="metric-total-videos">--</strong></div>
+      <div class="metric-card"><span>Assigned Videos</span><strong id="metric-assigned-videos">--</strong></div>
+      <div class="metric-card"><span>Total Tasks</span><strong id="metric-total-tasks">--</strong></div>
+      <div class="metric-card"><span>Completed Tasks</span><strong id="metric-completed-tasks">--</strong></div>
+      <div class="metric-card"><span>In Progress</span><strong id="metric-in-progress">--</strong></div>
+      <div class="metric-card"><span>Unassigned Videos</span><strong id="metric-unassigned-videos">--</strong></div>
+      <div class="metric-card"><span>Submitted Annotations</span><strong id="metric-submitted">--</strong></div>
+    </section>
+
+    <section class="card">
+      <div class="section-heading compact-heading">
+        <div><h2>Annotator Progress</h2><p>每位标注员的任务进度</p></div>
+        <button id="refresh-dashboard" class="button small secondary" type="button">刷新 Dashboard</button>
+      </div>
+      <div class="admin-table-wrap">
+        <table class="admin-table">
+          <thead><tr><th>Code</th><th>Name</th><th>Assigned</th><th>In Progress</th><th>Completed</th><th>Completion Rate</th></tr></thead>
+          <tbody id="progress-body"><tr><td colspan="6">Loading…</td></tr></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="section-heading compact-heading">
+        <div><h2>Videos & Task Assignment</h2><p>每页 50 条；同一视频可以分配给多个标注员</p></div>
+      </div>
+      <div class="admin-toolbar">
+        <div class="field-group"><label for="video-dataset-filter">Dataset</label><input id="video-dataset-filter" type="text" placeholder="全部"></div>
+        <div class="field-group"><label for="video-category-filter">Category</label><input id="video-category-filter" type="text" placeholder="全部"></div>
+        <div class="field-group"><label for="video-assigned-filter">Assignment</label><select id="video-assigned-filter"><option value="all">全部</option><option value="assigned">Assigned</option><option value="unassigned">Unassigned</option></select></div>
+        <div class="field-group"><label for="video-search">Filename</label><input id="video-search" type="search" placeholder="搜索文件名"></div>
+        <button id="filter-videos" class="button secondary" type="button">筛选</button>
+      </div>
+      <div class="admin-toolbar assignment-toolbar">
+        <div class="field-group"><label for="assign-annotator">Assign to</label><select id="assign-annotator"><option value="">选择标注员</option></select></div>
+        <button id="assign-selected" class="button primary" type="button">分配选中视频</button>
+        <span id="selected-video-count" class="mono-text">已选择 0 个</span>
+      </div>
+      <div class="admin-table-wrap">
+        <table class="admin-table">
+          <thead><tr><th><input id="select-all-videos" type="checkbox" aria-label="选择本页所有视频"></th><th>Video ID</th><th>Dataset</th><th>Category</th><th>Filename</th><th>Storage Path</th><th>Duration</th><th>Assigned</th><th>Completed</th><th>Status</th><th>Created</th><th>Actions</th></tr></thead>
+          <tbody id="videos-body"><tr><td colspan="12">Loading…</td></tr></tbody>
+        </table>
+      </div>
+      <div class="admin-pager"><button id="videos-previous" class="button small secondary" type="button">上一页</button><span id="videos-page" class="mono-text">0–0 / 0</span><button id="videos-next" class="button small secondary" type="button">下一页</button></div>
+    </section>
+
+    <section class="card">
+      <div class="section-heading compact-heading"><div><h2>Shared Templates</h2><p>Online Mode 的统一 Query / Text source of truth</p></div></div>
+      <div class="template-layout">
+        <form id="query-template-form" class="template-form">
+          <h3>Query Template</h3>
+          <input id="query-template-id" type="hidden">
+          <div class="template-form-row"><div class="field-group"><label for="query-template-code">Code</label><input id="query-template-code" type="text"></div><div class="field-group"><label for="query-template-category">Category</label><input id="query-template-category" type="text"></div></div>
+          <div class="field-group"><label for="query-template-name">Name</label><input id="query-template-name" type="text" required></div>
+          <div class="field-group"><label for="query-template-text">Text</label><textarea id="query-template-text" rows="4" required></textarea></div>
+          <div class="template-form-row"><div class="field-group"><label for="query-template-sort">Sort Order</label><input id="query-template-sort" type="number" value="0"></div><label><input id="query-template-enabled" type="checkbox" checked> Enabled</label></div>
+          <div class="button-row"><button class="button primary" type="submit">保存 Query Template</button><button class="button secondary" type="button" data-clear-template="query">清空</button></div>
+        </form>
+        <div id="query-template-list" class="template-list"><div class="empty-state">Loading…</div></div>
+
+        <form id="text-template-form" class="template-form">
+          <h3>Text Template</h3>
+          <input id="text-template-id" type="hidden">
+          <div class="template-form-row"><div class="field-group"><label for="text-template-code">Code</label><input id="text-template-code" type="text"></div><div class="field-group"><label for="text-template-category">Category</label><input id="text-template-category" type="text"></div></div>
+          <div class="field-group"><label for="text-template-name">Name</label><input id="text-template-name" type="text" required></div>
+          <div class="field-group"><label for="text-template-text">Text</label><textarea id="text-template-text" rows="4" required></textarea></div>
+          <div class="template-form-row"><div class="field-group"><label for="text-template-sort">Sort Order</label><input id="text-template-sort" type="number" value="0"></div><label><input id="text-template-enabled" type="checkbox" checked> Enabled</label></div>
+          <div class="button-row"><button class="button primary" type="submit">保存 Text Template</button><button class="button secondary" type="button" data-clear-template="text">清空</button></div>
+        </form>
+        <div id="text-template-list" class="template-list"><div class="empty-state">Loading…</div></div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="section-heading compact-heading">
+        <div><h2>Submitted Annotations</h2><p>查看标准 payload、Reset Task 与统一导出</p></div>
+        <div class="button-row"><button id="export-all-json" class="button primary" type="button">导出全部 Submitted JSON</button><button id="export-manifest-csv" class="button secondary" type="button">导出 Manifest CSV</button></div>
+      </div>
+      <div class="admin-table-wrap">
+        <table class="admin-table">
+          <thead><tr><th>Task</th><th>Annotator</th><th>Video</th><th>Dataset</th><th>Status</th><th>Updated</th><th>Actions</th></tr></thead>
+          <tbody id="annotations-body"><tr><td colspan="7">Loading…</td></tr></tbody>
+        </table>
+      </div>
+      <div class="admin-pager"><button id="annotations-previous" class="button small secondary" type="button">上一页</button><span id="annotations-page" class="mono-text">0–0 / 0</span><button id="annotations-next" class="button small secondary" type="button">下一页</button></div>
+    </section>
+  </main>
+
+  <dialog id="annotation-dialog" class="card detail-panel">
+    <div class="section-heading"><div><h2>Annotation Detail</h2><p id="detail-meta"></p></div><button id="close-detail" class="button secondary" type="button">关闭</button></div>
+    <div id="detail-annotations"></div>
+    <h3>Raw JSON Preview</h3>
+    <pre id="detail-json"></pre>
+  </dialog>
+
+  <script src="./vendor/supabase-js-2.112.4.js"></script>
+  <script src="./js/supabase-config.js"></script>
+  <script src="./js/supabase-client.js"></script>
+  <script src="./js/auth.js"></script>
+  <script src="./js/json-export.js"></script>
+  <script src="./js/export.js"></script>
+  <script src="./js/admin.js"></script>
+</body>
+</html>

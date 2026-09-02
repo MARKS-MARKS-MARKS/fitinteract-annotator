@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="light">
+  <title>登录 · FitInteract Annotation Platform</title>
+  <link rel="stylesheet" href="./css/style.css">
+  <link rel="stylesheet" href="./css/admin.css">
+</head>
+<body class="auth-page">
+  <main class="auth-shell">
+    <section class="card auth-card">
+      <div class="auth-brand">
+        <span class="mode-badge">Online Collaborative Mode</span>
+        <h1>FitInteract Annotation Platform</h1>
+        <p>使用管理员在 Supabase Dashboard 中创建的账号登录。</p>
+      </div>
+      <div id="login-message" class="message hidden" role="alert" aria-live="polite"></div>
+      <form id="login-form">
+        <div class="field-group">
+          <label for="login-email">Email</label>
+          <input id="login-email" type="email" autocomplete="username" required>
+        </div>
+        <div class="field-group">
+          <label for="login-password">Password</label>
+          <input id="login-password" type="password" autocomplete="current-password" required>
+        </div>
+        <button id="login-button" class="button primary large" type="submit">登录</button>
+      </form>
+      <div class="auth-links">
+        <a href="./index.html?mode=offline">进入 Offline Mode</a>
+      </div>
+      <p class="privacy-copy">任务视频来自项目私有 Supabase Storage；标注结果保存到项目数据库，不发送到其他第三方服务。</p>
+    </section>
+  </main>
+
+  <script src="./vendor/supabase-js-2.112.4.js"></script>
+  <script src="./js/supabase-config.js"></script>
+  <script src="./js/supabase-client.js"></script>
+  <script src="./js/auth.js"></script>
+  <script src="./js/login.js"></script>
+</body>
+</html>
