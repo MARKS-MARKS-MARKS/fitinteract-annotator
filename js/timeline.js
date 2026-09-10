@@ -13,6 +13,7 @@
       this.currentTime = 0;
       this.start = null;
       this.end = null;
+      this.queryTime = null;
       this.mode = "annotate";
       this.nextBoundary = "start";
       this.zoom = 1;
@@ -23,13 +24,16 @@
 
     bindEvents() {
       this.elements.track.addEventListener("pointerdown", (event) => {
-        if (event.target === this.elements.startHandle || event.target === this.elements.endHandle) return;
+        if (event.target === this.elements.startHandle || event.target === this.elements.endHandle || event.target === this.elements.queryMarker) return;
         if (this.duration <= 0) {
           this.emit("onError", "请先选择并加载本地视频。");
           return;
         }
         const time = this.timeFromPointer(event);
-        if (event.shiftKey || this.mode === "annotate") {
+        if (this.mode === "query") {
+          this.setQueryTime(time);
+          this.emit("onSeek", time);
+        } else if (event.shiftKey || this.mode === "annotate") {
           this.applyAnnotationClick(time);
         } else {
           this.emit("onSeek", time);
@@ -38,6 +42,32 @@
 
       this.bindHandle(this.elements.startHandle, "start");
       this.bindHandle(this.elements.endHandle, "end");
+      this.bindQueryMarker();
+    }
+
+    bindQueryMarker() {
+      const marker = this.elements.queryMarker;
+      marker.addEventListener("pointerdown", (event) => {
+        if (this.duration <= 0 || this.queryTime === null) return;
+        event.preventDefault();
+        event.stopPropagation();
+        this.dragBoundary = "query";
+        marker.setPointerCapture(event.pointerId);
+      });
+      marker.addEventListener("pointermove", (event) => {
+        if (this.dragBoundary !== "query") return;
+        this.queryTime = this.timeFromPointer(event);
+        this.render();
+        this.emit("onQueryTime", this.queryTime);
+        this.emit("onSeek", this.queryTime);
+      });
+      const release = (event) => {
+        if (this.dragBoundary !== "query") return;
+        this.dragBoundary = null;
+        if (marker.hasPointerCapture(event.pointerId)) marker.releasePointerCapture(event.pointerId);
+      };
+      marker.addEventListener("pointerup", release);
+      marker.addEventListener("pointercancel", release);
     }
 
     bindHandle(handle, boundary) {
@@ -108,6 +138,7 @@
     setDuration(duration) {
       this.duration = Number.isFinite(duration) && duration > 0 ? duration : 0;
       this.currentTime = 0;
+      this.queryTime = null;
       this.clearSelection(false);
       this.buildTicks();
       this.render();
@@ -121,8 +152,26 @@
     }
 
     setMode(mode) {
-      this.mode = mode === "seek" ? "seek" : "annotate";
+      this.mode = ["seek", "query"].includes(mode) ? mode : "annotate";
       this.renderMode();
+    }
+
+    setQueryTime(time, notify) {
+      if (this.duration <= 0) return false;
+      this.queryTime = clamp(Number(time) || 0, 0, this.duration);
+      this.render();
+      if (notify !== false) this.emit("onQueryTime", this.queryTime);
+      return true;
+    }
+
+    clearQueryTime(notify) {
+      this.queryTime = null;
+      this.render();
+      if (notify !== false) this.emit("onQueryTime", null);
+    }
+
+    getQueryTime() {
+      return this.queryTime;
     }
 
     setZoom(zoom) {
@@ -209,6 +258,7 @@
     render() {
       const startPercent = this.duration > 0 && this.start !== null ? (this.start / this.duration) * 100 : 0;
       const endPercent = this.duration > 0 && this.end !== null ? (this.end / this.duration) * 100 : 0;
+      const queryPercent = this.duration > 0 && this.queryTime !== null ? (this.queryTime / this.duration) * 100 : 0;
       this.elements.startHandle.classList.toggle("hidden", this.start === null);
       this.elements.endHandle.classList.toggle("hidden", this.end === null);
       this.elements.selection.classList.toggle("hidden", this.start === null || this.end === null);
@@ -216,6 +266,8 @@
       this.elements.endHandle.style.left = endPercent + "%";
       this.elements.selection.style.left = startPercent + "%";
       this.elements.selection.style.width = Math.max(0, endPercent - startPercent) + "%";
+      this.elements.queryMarker.classList.toggle("hidden", this.queryTime === null);
+      this.elements.queryMarker.style.left = queryPercent + "%";
       this.elements.endLabel.textContent = this.duration.toFixed(2);
       this.renderMode();
       this.renderZoom();
@@ -224,14 +276,18 @@
 
     renderMode() {
       const annotate = this.mode === "annotate";
+      const seek = this.mode === "seek";
+      const query = this.mode === "query";
       this.elements.annotateButton.classList.toggle("active", annotate);
-      this.elements.seekButton.classList.toggle("active", !annotate);
+      this.elements.seekButton.classList.toggle("active", seek);
+      this.elements.queryButton.classList.toggle("active", query);
       this.elements.annotateButton.setAttribute("aria-pressed", String(annotate));
-      this.elements.seekButton.setAttribute("aria-pressed", String(!annotate));
-      this.elements.track.style.cursor = annotate ? "crosshair" : "pointer";
+      this.elements.seekButton.setAttribute("aria-pressed", String(seek));
+      this.elements.queryButton.setAttribute("aria-pressed", String(query));
+      this.elements.track.style.cursor = annotate || query ? "crosshair" : "pointer";
       this.elements.modeStatus.textContent = annotate
-        ? "下一次点击：设置 " + (this.nextBoundary === "start" ? "Start" : "End")
-        : "点击时间轴：跳转播放位置（Shift+点击仍可标注）";
+        ? "Response Window：下一次点击设置 " + (this.nextBoundary === "start" ? "Start" : "End")
+        : (query ? "Query Time：点击一次设置当前 Query Start" : "定位：点击时间轴跳转（Shift+点击仍可设置 Response）");
     }
 
     renderZoom() {

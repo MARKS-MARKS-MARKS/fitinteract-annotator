@@ -7,7 +7,10 @@
     textPresets: "fitinteract_text_presets_v1",
     videoRoots: "fitinteract_video_roots_v1",
     videoPathHistory: "fitinteract_video_path_history_v1",
-    draft: "fitinteract_draft_v1"
+    draft: "fitinteract_draft_v1",
+    presetSchemaVersion: "fitinteract_presets_schema_version",
+    presetMigrationBackup: "fitinteract_presets_migration_backup_v1",
+    draftMigrationBackup: "fitinteract_draft_query_migration_backup_v1"
   });
 
   const DEFAULTS = Object.freeze({
@@ -62,6 +65,15 @@
       }
     }
 
+    readRaw(key) {
+      try {
+        return localStorage.getItem(key);
+      } catch (error) {
+        this.onError("无法读取浏览器本地原始数据。", error);
+        return null;
+      }
+    }
+
     write(key, value) {
       try {
         localStorage.setItem(key, JSON.stringify(value));
@@ -88,8 +100,8 @@
       this.storage = storage;
       this.storageKey = storageKey;
       this.prefix = prefix;
-      this.items = this.normalize(storage.read(storageKey, defaults));
-      this.persist();
+      const storedItems = storage.read(storageKey, null);
+      this.items = this.mergeItems(Array.isArray(storedItems) ? storedItems : [], defaults);
     }
 
     normalize(items) {
@@ -106,6 +118,30 @@
 
     all() {
       return clone(this.items);
+    }
+
+    mergeItems(currentItems, incomingItems) {
+      const current = this.normalize(currentItems);
+      const incoming = this.normalize(incomingItems);
+      const merged = current.slice();
+      incoming.forEach((candidate) => {
+        const normalizedName = candidate.name.trim().toLocaleLowerCase();
+        const normalizedValue = candidate.value.trim();
+        const duplicate = merged.some((item) =>
+          item.id === candidate.id ||
+          (item.name.trim().toLocaleLowerCase() === normalizedName && item.value.trim() === normalizedValue)
+        );
+        if (!duplicate) merged.push(candidate);
+      });
+      return merged;
+    }
+
+    merge(items) {
+      const before = this.items.length;
+      const incomingCount = Array.isArray(items) ? items.length : 0;
+      this.items = this.mergeItems(this.items, items);
+      this.persist();
+      return { added: this.items.length - before, skipped: Math.max(0, incomingCount - (this.items.length - before)) };
     }
 
     find(id) {
@@ -153,6 +189,53 @@
     }
   }
 
+  function protectPresetStorage(storage) {
+    const version = Number(storage.read(STORAGE_KEYS.presetSchemaVersion, 0)) || 0;
+    if (version >= 2) return { backupCreated: false, version: version };
+
+    let backupCreated = false;
+    let backupReady = Boolean(storage.readRaw(STORAGE_KEYS.presetMigrationBackup));
+    if (!backupReady) {
+      const trackedKeys = [
+        STORAGE_KEYS.queryPresets,
+        STORAGE_KEYS.textPresets,
+        STORAGE_KEYS.videoRoots,
+        STORAGE_KEYS.settings,
+        STORAGE_KEYS.videoPathHistory,
+        STORAGE_KEYS.draft
+      ];
+      const rawStorage = {};
+      trackedKeys.forEach((key) => { rawStorage[key] = storage.readRaw(key); });
+      backupCreated = storage.write(STORAGE_KEYS.presetMigrationBackup, {
+        format: "FitInteractPresetMigrationBackup",
+        version: 1,
+        created_at: new Date().toISOString(),
+        source_schema_version: version,
+        query_presets: storage.read(STORAGE_KEYS.queryPresets, []),
+        text_presets: storage.read(STORAGE_KEYS.textPresets, []),
+        video_roots: storage.read(STORAGE_KEYS.videoRoots, []),
+        settings: storage.read(STORAGE_KEYS.settings, {}),
+        raw_storage: rawStorage
+      });
+      backupReady = Boolean(storage.readRaw(STORAGE_KEYS.presetMigrationBackup));
+    }
+
+    if (!backupReady) return { backupCreated: false, version: version, safe: false };
+
+    const draft = storage.read(STORAGE_KEYS.draft, null);
+    if (draft && draft.data && typeof draft.data.query === "string" && !storage.readRaw(STORAGE_KEYS.draftMigrationBackup)) {
+      storage.write(STORAGE_KEYS.draftMigrationBackup, {
+        format: "FitInteractLegacyDraftBackup",
+        version: 1,
+        created_at: new Date().toISOString(),
+        draft: draft,
+        raw: storage.readRaw(STORAGE_KEYS.draft)
+      });
+    }
+    storage.write(STORAGE_KEYS.presetSchemaVersion, 2);
+    return { backupCreated: backupCreated, version: 2, safe: true };
+  }
+
   function populatePresetSelect(select, items, placeholder) {
     const previous = select.value;
     select.textContent = "";
@@ -173,5 +256,6 @@
   namespace.PRESET_DEFAULTS = DEFAULTS;
   namespace.StorageService = StorageService;
   namespace.PresetCollection = PresetCollection;
+  namespace.protectPresetStorage = protectPresetStorage;
   namespace.populatePresetSelect = populatePresetSelect;
 })(window.FitInteract = window.FitInteract || {});

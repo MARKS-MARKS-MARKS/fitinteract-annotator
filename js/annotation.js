@@ -1,6 +1,15 @@
 (function (namespace) {
   "use strict";
 
+  const DEFAULT_ACTIONS = Object.freeze([
+    "[feedback]"
+  ]);
+
+  function normalizeAnnotationAction(value) {
+    if (value === undefined || value === null) return DEFAULT_ACTIONS[0];
+    return typeof value === "string" ? value.trim() : "";
+  }
+
   function roundTime(value) {
     return Number(Number(value).toFixed(2));
   }
@@ -11,6 +20,7 @@
         start: roundTime(item.time_window_sec.start),
         end: roundTime(item.time_window_sec.end)
       },
+      action: normalizeAnnotationAction(item.action),
       text: item.text
     }));
   }
@@ -48,7 +58,7 @@
       if (typeof this.callbacks[name] === "function") this.callbacks[name](value);
     }
 
-    validate(start, end, text, duration) {
+    validate(start, end, text, duration, action) {
       const errors = [];
       const startValue = Number(start);
       const endValue = Number(end);
@@ -61,12 +71,13 @@
       if (Number.isFinite(duration) && duration > 0 && Number.isFinite(endValue) && endValue > duration + 0.005) {
         errors.push("End 不能超过视频时长。");
       }
+      if (typeof action !== "string" || !action.trim()) errors.push("Action 不能为空。");
       if (!String(text || "").trim()) errors.push("Response / Text 不能为空。");
       return errors;
     }
 
-    save(start, end, text, duration) {
-      const errors = this.validate(start, end, text, duration);
+    save(start, end, text, duration, action) {
+      const errors = this.validate(start, end, text, duration, action);
       if (errors.length) return { ok: false, errors: errors };
 
       const annotation = {
@@ -74,6 +85,7 @@
           start: roundTime(start),
           end: roundTime(end)
         },
+        action: String(action).trim(),
         text: String(text).trim()
       };
 
@@ -140,6 +152,7 @@
             start: roundTime(item.time_window_sec.start),
             end: roundTime(item.time_window_sec.end)
           },
+          action: normalizeAnnotationAction(item.action),
           text: String(item.text || "")
         }))
         .filter((item) => Number.isFinite(item.time_window_sec.start) && Number.isFinite(item.time_window_sec.end))
@@ -200,6 +213,10 @@
         text.className = "annotation-text";
         text.textContent = annotation.text;
 
+        const action = document.createElement("span");
+        action.className = "annotation-action-label";
+        action.textContent = annotation.action;
+
         const actions = document.createElement("div");
         actions.className = "annotation-buttons";
         actions.append(
@@ -207,7 +224,7 @@
           this.createActionButton("编辑", "edit", "button small secondary"),
           this.createActionButton("删除", "delete", "button small danger-ghost")
         );
-        item.append(header, text, actions);
+        item.append(header, action, text, actions);
         this.elements.list.appendChild(item);
       });
     }
@@ -223,5 +240,7 @@
   }
 
   namespace.roundTime = roundTime;
+  namespace.ANNOTATION_ACTIONS = DEFAULT_ACTIONS;
+  namespace.normalizeAnnotationAction = normalizeAnnotationAction;
   namespace.AnnotationManager = AnnotationManager;
 })(window.FitInteract = window.FitInteract || {});

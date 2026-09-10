@@ -25,6 +25,17 @@
     videoPath: $("video-path"),
     videoPathHistory: $("video-path-history"),
     queryText: $("query-text"),
+    queryStartInput: $("query-start-input"),
+    queryStartDisplay: $("query-start-display"),
+    setQueryCurrent: $("set-query-current-button"),
+    selectQueryTimeline: $("select-query-timeline-button"),
+    clearQueryTime: $("clear-query-time-button"),
+    saveQuery: $("save-query-button"),
+    cancelQueryEdit: $("cancel-query-edit-button"),
+    queryList: $("query-list"),
+    queriesTitle: $("queries-title"),
+    legacyQueryWarning: $("legacy-query-warning"),
+    annotationAction: $("annotation-action"),
     annotationText: $("annotation-text"),
     startInput: $("start-input"),
     endInput: $("end-input"),
@@ -48,14 +59,20 @@
     timelineProgress: $("timeline-progress"),
     startHandle: $("start-handle"),
     endHandle: $("end-handle"),
+    queryMarker: $("query-marker"),
     playhead: $("playhead"),
     timelineEndLabel: $("timeline-end-label"),
     modeAnnotate: $("mode-annotate"),
     modeSeek: $("mode-seek"),
+    modeQuery: $("mode-query"),
     timelineModeStatus: $("timeline-mode-status"),
     zoomLevels: Array.from(document.querySelectorAll("#zoom-levels [data-zoom]")),
     zoomIn: $("zoom-in"),
-    zoomOut: $("zoom-out")
+    zoomOut: $("zoom-out"),
+    exportPresets: $("export-presets-button"),
+    importPresets: $("import-presets-button"),
+    importPresetsFile: $("import-presets-file"),
+    presetBackupStatus: $("preset-backup-status")
   };
 
   let messageTimer = null;
@@ -65,6 +82,8 @@
   let currentFileName = "";
   let activeMode = "offline";
   let onlineDirtyHandler = null;
+  let renderQueryPresets = null;
+  let renderTextPresets = null;
 
   function showMessage(message, type, sticky) {
     window.clearTimeout(messageTimer);
@@ -82,6 +101,7 @@
   }
 
   const storage = new namespace.StorageService((message) => showMessage(message, "error", true));
+  const presetProtection = namespace.protectPresetStorage(storage);
   const queryPresets = new namespace.PresetCollection(
     storage, namespace.STORAGE_KEYS.queryPresets, namespace.PRESET_DEFAULTS.queryPresets, "query"
   );
@@ -150,10 +170,12 @@
     progress: elements.timelineProgress,
     startHandle: elements.startHandle,
     endHandle: elements.endHandle,
+    queryMarker: elements.queryMarker,
     playhead: elements.playhead,
     endLabel: elements.timelineEndLabel,
     annotateButton: elements.modeAnnotate,
     seekButton: elements.modeSeek,
+    queryButton: elements.modeQuery,
     modeStatus: elements.timelineModeStatus,
     zoomButtons: elements.zoomLevels
   }, {
@@ -161,6 +183,7 @@
       if (!video.seek(time)) showMessage("请先选择并加载本地视频。", "error");
     },
     onSelection: (selection) => updateWindowInputs(selection),
+    onQueryTime: (time) => updateQueryStart(time),
     onError: (message) => showMessage(message, "error")
   });
 
@@ -182,7 +205,11 @@
       elements.durationTime.textContent = formatSeconds(duration) + " s";
       elements.endInput.max = String(duration);
       elements.startInput.max = String(duration);
+      elements.queryStartInput.max = String(duration);
       timeline.setDuration(duration);
+      if (elements.queryStartInput.value !== "" && Number(elements.queryStartInput.value) <= duration + 0.005) {
+        timeline.setQueryTime(Number(elements.queryStartInput.value), false);
+      }
     },
     onTime: (time) => {
       elements.currentTime.textContent = formatSeconds(time) + " s";
@@ -198,6 +225,7 @@
     onPlay: (annotation) => playAnnotation(annotation),
     onEdit: (annotation) => {
       timeline.setSelection(annotation.time_window_sec.start, annotation.time_window_sec.end);
+      elements.annotationAction.value = annotation.action;
       elements.annotationText.value = annotation.text;
       elements.saveAnnotation.textContent = "更新 Annotation";
       elements.cancelEdit.classList.remove("hidden");
@@ -205,9 +233,36 @@
     },
     onEditState: (annotation) => {
       if (!annotation) {
+        resetAnnotationAction();
         elements.saveAnnotation.textContent = "+ 添加 Annotation";
         elements.cancelEdit.classList.add("hidden");
       }
+    },
+    onChange: () => {
+      updatePreview();
+      markDirty();
+    }
+  });
+
+  const queries = new namespace.QueryManager({
+    list: elements.queryList,
+    title: elements.queriesTitle
+  }, {
+    onLocate: (query) => {
+      if (!video.seek(query.start_time_sec)) showMessage("请先选择并加载视频；Query 时间仍已保留。", "info");
+      if (video.duration > 0) timeline.setQueryTime(query.start_time_sec, false);
+    },
+    onEdit: (query) => {
+      elements.queryText.value = query.text;
+      updateQueryStart(query.start_time_sec, false);
+      if (video.duration > 0 && query.start_time_sec <= video.duration + 0.005) {
+        timeline.setQueryTime(query.start_time_sec, false);
+      }
+      elements.queryText.focus();
+    },
+    onEditState: (query) => {
+      elements.saveQuery.textContent = query ? "更新 Query" : "+ 添加 Query";
+      elements.cancelQueryEdit.classList.toggle("hidden", !query);
     },
     onChange: () => {
       updatePreview();
@@ -225,8 +280,54 @@
     }
   }
 
+  function populateAnnotationActions() {
+    elements.annotationAction.textContent = "";
+    namespace.ANNOTATION_ACTIONS.forEach((action) => {
+      const option = document.createElement("option");
+      option.value = action;
+      option.textContent = action;
+      elements.annotationAction.appendChild(option);
+    });
+    resetAnnotationAction();
+  }
+
+  function resetAnnotationAction() {
+    elements.annotationAction.value = namespace.ANNOTATION_ACTIONS[0];
+  }
+
+  function updateQueryStart(time, shouldMarkDirty) {
+    if (time === null || time === "" || !Number.isFinite(Number(time))) {
+      elements.queryStartInput.value = "";
+      elements.queryStartDisplay.textContent = "-- s";
+    } else {
+      const rounded = namespace.roundTime(time);
+      elements.queryStartInput.value = rounded.toFixed(2);
+      elements.queryStartDisplay.textContent = formatSeconds(rounded) + " s";
+    }
+    if (shouldMarkDirty !== false) markDirty();
+  }
+
+  function clearQueryEditor(cancelEditing) {
+    if (cancelEditing) queries.cancelEdit();
+    elements.queryText.value = "";
+    updateQueryStart(null, false);
+    timeline.clearQueryTime(false);
+  }
+
+  function saveCurrentQuery() {
+    const result = queries.save(elements.queryStartInput.value, elements.queryText.value, video.duration);
+    if (!result.ok) {
+      showMessage(result.errors.join("\n"), "error", true);
+      return false;
+    }
+    clearQueryEditor(false);
+    elements.legacyQueryWarning.classList.add("hidden");
+    showMessage(result.updated ? "Query 已更新。" : "Query 已添加。", "success");
+    return true;
+  }
+
   function currentData() {
-    return namespace.buildAnnotationData(elements.videoPath.value, elements.queryText.value, annotations.getAll());
+    return namespace.buildAnnotationData(elements.videoPath.value, queries.getAll(), annotations.getAll());
   }
 
   function updatePreview() {
@@ -247,17 +348,21 @@
   function saveDraft() {
     if (suppressDraft || activeMode !== "offline") return;
     const data = currentData();
-    const hasContent = Boolean(data.video_path || data.query || data.annotation.length);
+    const hasContent = Boolean(data.video_path || data.query.length || data.annotation.length || elements.queryText.value.trim());
     if (!hasContent) {
       storage.remove(namespace.STORAGE_KEYS.draft);
       return;
     }
     storage.write(namespace.STORAGE_KEYS.draft, {
-      version: 1,
+      version: 2,
       savedAt: new Date().toISOString(),
       videoFileName: currentFileName,
       jsonFilename: elements.jsonFilename.value,
-      data: data
+      data: data,
+      queryEditor: {
+        start_time_sec: elements.queryStartInput.value === "" ? null : namespace.roundTime(elements.queryStartInput.value),
+        text: elements.queryText.value
+      }
     });
   }
 
@@ -269,7 +374,10 @@
     elements.restoreDraft.onclick = () => {
       suppressDraft = true;
       elements.videoPath.value = String(draft.data.video_path || "");
-      elements.queryText.value = String(draft.data.query || "");
+      const normalizedQueries = queries.replaceAll(draft.data.query);
+      const editor = draft.queryEditor && typeof draft.queryEditor === "object" ? draft.queryEditor : null;
+      elements.queryText.value = editor ? String(editor.text || "") : "";
+      updateQueryStart(editor ? editor.start_time_sec : null, false);
       annotations.replaceAll(draft.data.annotation || []);
       elements.jsonFilename.value = draft.jsonFilename || "fitinteract_annotation.json";
       if (draft.videoFileName) {
@@ -280,7 +388,10 @@
       dirty = true;
       updatePreview();
       elements.draftBanner.classList.add("hidden");
-      showMessage("草稿已恢复。出于浏览器安全限制，请重新选择本地视频文件。", "info", true);
+      elements.legacyQueryWarning.classList.toggle("hidden", !normalizedQueries.legacy);
+      showMessage(normalizedQueries.legacy
+        ? "草稿已恢复；旧 query:string 已转换为 Query #1（0.00 s），请确认 Query Start。视频文件仍需重新选择。"
+        : "草稿已恢复。出于浏览器安全限制，请重新选择本地视频文件。", "info", true);
     };
     elements.discardDraft.onclick = () => {
       storage.remove(namespace.STORAGE_KEYS.draft);
@@ -378,6 +489,104 @@
     return render;
   }
 
+  function downloadPresetBackup() {
+    const backup = {
+      format: "FitInteractPresetBackup",
+      version: 1,
+      exported_at: new Date().toISOString(),
+      preset_schema_version: 2,
+      storage_keys: {
+        query_presets: namespace.STORAGE_KEYS.queryPresets,
+        text_presets: namespace.STORAGE_KEYS.textPresets,
+        video_roots: namespace.STORAGE_KEYS.videoRoots,
+        settings: namespace.STORAGE_KEYS.settings
+      },
+      query_presets: queryPresets.all(),
+      text_presets: textPresets.all(),
+      video_roots: videoRoots.all(),
+      settings: JSON.parse(JSON.stringify(settings))
+    };
+    const blob = new Blob([JSON.stringify(backup, null, 2)], { type: "application/json;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "fitinteract_presets_backup.json";
+    link.style.display = "none";
+    document.body.appendChild(link);
+    try { link.click(); }
+    finally {
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 0);
+    }
+    elements.presetBackupStatus.textContent = "已导出：Query " + backup.query_presets.length + "，Text " + backup.text_presets.length + "，Video Root " + backup.video_roots.length + "。";
+    showMessage("模板备份已生成，请妥善保存 fitinteract_presets_backup.json。", "success");
+  }
+
+  function validatePresetBackup(backup) {
+    if (!backup || backup.format !== "FitInteractPresetBackup" || backup.version !== 1) {
+      throw new Error("不是有效的 FitInteractPresetBackup v1 文件。");
+    }
+    if (!Array.isArray(backup.query_presets) || !Array.isArray(backup.text_presets)) {
+      throw new Error("备份缺少 query_presets 或 text_presets 数组。");
+    }
+    if (backup.video_roots !== undefined && !Array.isArray(backup.video_roots)) {
+      throw new Error("video_roots 必须是数组。");
+    }
+    const validateItems = (items, label) => {
+      items.forEach((item, index) => {
+        if (!item || typeof item !== "object" || Array.isArray(item)) {
+          throw new Error(label + " #" + (index + 1) + " 必须是对象。");
+        }
+        if (typeof item.name !== "string" || !item.name.trim() || typeof item.value !== "string" || !item.value.trim()) {
+          throw new Error(label + " #" + (index + 1) + " 的 name/value 必须是非空字符串。");
+        }
+        if (item.id !== undefined && (typeof item.id !== "string" || !item.id.trim())) {
+          throw new Error(label + " #" + (index + 1) + " 的 id 必须是非空字符串或省略。");
+        }
+      });
+    };
+    validateItems(backup.query_presets, "Query preset");
+    validateItems(backup.text_presets, "Text preset");
+    validateItems(backup.video_roots || [], "Video Root");
+    if (backup.settings !== undefined && (!backup.settings || typeof backup.settings !== "object" || Array.isArray(backup.settings))) {
+      throw new Error("settings 必须是对象。");
+    }
+  }
+
+  async function importPresetBackup(file) {
+    let backup;
+    try { backup = JSON.parse(await file.text()); }
+    catch (error) { throw new Error("备份 JSON 无法解析：" + error.message); }
+    validatePresetBackup(backup);
+    const queryCount = backup.query_presets.length;
+    const textCount = backup.text_presets.length;
+    const rootCount = Array.isArray(backup.video_roots) ? backup.video_roots.length : 0;
+    const proceed = window.confirm(
+      "将以 MERGE 方式导入：\nQuery " + queryCount + " 条\nText " + textCount + " 条\nVideo Root " + rootCount +
+      " 条\n\n现有模板不会被删除或覆盖；同名但内容不同的模板会同时保留。继续吗？"
+    );
+    if (!proceed) return;
+
+    const queryResult = queryPresets.merge(backup.query_presets);
+    const textResult = textPresets.merge(backup.text_presets);
+    const rootResult = videoRoots.merge(backup.video_roots || []);
+    if (backup.settings && typeof backup.settings === "object" && !Array.isArray(backup.settings)) {
+      if ([1, 2, 4, 8].includes(Number(backup.settings.timelineZoom))) settings.timelineZoom = Number(backup.settings.timelineZoom);
+      if ([0.5, 0.75, 1, 1.25, 1.5, 2].includes(Number(backup.settings.playbackRate))) settings.playbackRate = Number(backup.settings.playbackRate);
+      if (typeof backup.settings.lastVideoRootId === "string") settings.lastVideoRootId = backup.settings.lastVideoRootId;
+      saveSettings();
+      updateTimelineZoom(settings.timelineZoom);
+      elements.playbackRate.value = String(settings.playbackRate);
+      video.setPlaybackRate(settings.playbackRate);
+    }
+    renderQueryPresets();
+    renderTextPresets();
+    renderRoots();
+    const added = queryResult.added + textResult.added + rootResult.added;
+    elements.presetBackupStatus.textContent = "Merge 完成：新增 Query " + queryResult.added + "，Text " + textResult.added + "，Video Root " + rootResult.added + "；原有模板 0 删除。";
+    showMessage("模板备份导入完成，共新增 " + added + " 条；没有删除或覆盖当前模板。", "success", true);
+  }
+
   function setInitialExamples() {
     const firstQuery = queryPresets.all()[0];
     const firstText = textPresets.all()[0];
@@ -417,7 +626,8 @@
       selection.start,
       selection.end,
       elements.annotationText.value,
-      video.duration
+      video.duration,
+      elements.annotationAction.value
     );
     if (!result.ok) {
       showMessage(result.errors.join("\n"), "error", true);
@@ -431,7 +641,7 @@
   function downloadCurrentJson() {
     clearMessage();
     const data = currentData();
-    const errors = namespace.validateAnnotationData(data);
+    const errors = namespace.validateAnnotationData(data, video.duration);
     if (errors.length) {
       showMessage("下载前校验未通过：\n" + errors.map((item) => "• " + item).join("\n"), "error", true);
       return false;
@@ -462,13 +672,15 @@
     elements.videoFileName.textContent = "尚未选择";
     elements.videoStage.classList.remove("has-video");
     elements.videoPath.value = "";
-    elements.queryText.value = "";
+    clearQueryEditor(true);
     elements.annotationText.value = "";
     elements.jsonFilename.value = "fitinteract_annotation.json";
     elements.currentTime.textContent = "00.00 s";
     elements.durationTime.textContent = "00.00 s";
     annotations.clear();
+    queries.clear();
     timeline.setDuration(0);
+    elements.legacyQueryWarning.classList.add("hidden");
     storage.remove(namespace.STORAGE_KEYS.draft);
     suppressDraft = false;
     dirty = false;
@@ -479,15 +691,17 @@
   function handleFileSelection() {
     const file = elements.videoFile.files && elements.videoFile.files[0];
     if (!file) return;
-    if ((video.hasVideo() || annotations.getAll().length) && dirty) {
-      const proceed = window.confirm("切换视频会清空当前时间窗口和 annotation 列表，是否继续？");
+    if ((video.hasVideo() || annotations.getAll().length || queries.getAll().length) && dirty) {
+      const proceed = window.confirm("切换视频会清空当前 Query、时间窗口和 annotation 列表，是否继续？");
       if (!proceed) {
         elements.videoFile.value = "";
         return;
       }
       suppressDraft = true;
       annotations.clear();
+      queries.clear();
       timeline.clearSelection();
+      clearQueryEditor(true);
       elements.annotationText.value = "";
       suppressDraft = false;
     }
@@ -504,6 +718,30 @@
     elements.videoPath.addEventListener("input", () => { updatePreview(); markDirty(); });
     elements.videoPath.addEventListener("change", () => addVideoPathHistory(elements.videoPath.value));
     elements.queryText.addEventListener("input", () => { updatePreview(); markDirty(); });
+    elements.queryStartInput.addEventListener("change", () => {
+      if (elements.queryStartInput.value === "") {
+        updateQueryStart(null);
+        timeline.clearQueryTime(false);
+        return;
+      }
+      const value = Number(elements.queryStartInput.value);
+      updateQueryStart(value);
+      if (video.duration > 0 && value <= video.duration + 0.005) timeline.setQueryTime(value, false);
+    });
+    elements.setQueryCurrent.addEventListener("click", () => {
+      if (!video.hasVideo() || video.duration <= 0) return showMessage("请先选择并加载视频。", "error");
+      timeline.setQueryTime(video.getCurrentTime());
+    });
+    elements.selectQueryTimeline.addEventListener("click", () => {
+      timeline.setMode("query");
+      showMessage("Query Time 模式已启用：点击时间轴设置单个 Q 时间点。", "info");
+    });
+    elements.clearQueryTime.addEventListener("click", () => {
+      updateQueryStart(null);
+      timeline.clearQueryTime(false);
+    });
+    elements.saveQuery.addEventListener("click", saveCurrentQuery);
+    elements.cancelQueryEdit.addEventListener("click", () => clearQueryEditor(true));
 
     elements.playbackRate.addEventListener("change", () => {
       video.setPlaybackRate(elements.playbackRate.value);
@@ -513,6 +751,7 @@
 
     elements.modeAnnotate.addEventListener("click", () => timeline.setMode("annotate"));
     elements.modeSeek.addEventListener("click", () => timeline.setMode("seek"));
+    elements.modeQuery.addEventListener("click", () => timeline.setMode("query"));
     elements.zoomLevels.forEach((button) => button.addEventListener("click", () => updateTimelineZoom(button.dataset.zoom)));
     elements.zoomIn.addEventListener("click", () => {
       const levels = [1, 2, 4, 8];
@@ -565,6 +804,15 @@
     });
     elements.downloadJson.addEventListener("click", downloadCurrentJson);
     elements.newTask.addEventListener("click", resetTask);
+    elements.exportPresets.addEventListener("click", downloadPresetBackup);
+    elements.importPresets.addEventListener("click", () => elements.importPresetsFile.click());
+    elements.importPresetsFile.addEventListener("change", async () => {
+      const file = elements.importPresetsFile.files && elements.importPresetsFile.files[0];
+      if (!file) return;
+      try { await importPresetBackup(file); }
+      catch (error) { showMessage("模板备份导入失败：" + error.message, "error", true); }
+      finally { elements.importPresetsFile.value = ""; }
+    });
 
     window.addEventListener("beforeunload", () => {
       window.clearTimeout(draftTimer);
@@ -587,6 +835,9 @@
       } else if (key === "e") {
         event.preventDefault();
         elements.setEnd.click();
+      } else if (key === "q") {
+        event.preventDefault();
+        elements.setQueryCurrent.click();
       } else if (key === "a") {
         event.preventDefault();
         saveCurrentAnnotation();
@@ -627,8 +878,9 @@
     $("setup-description").textContent = "Video Path 自动来自 videos.storage_path，统一模板来自 Supabase。";
     $("app-footer").textContent = "Online Collaborative Mode · 私有 Storage 视频 · 标注保存到项目数据库 · 不发送到其他第三方服务";
     annotations.clear();
+    queries.clear();
     timeline.setDuration(0);
-    elements.queryText.value = "";
+    clearQueryEditor(true);
     elements.annotationText.value = "";
     elements.videoPath.value = "";
     updatePreview();
@@ -661,7 +913,10 @@
     elements.videoFileName.textContent = videoRecord.original_filename;
     elements.videoStage.classList.add("has-video");
     elements.videoPath.value = videoRecord.storage_path;
-    elements.queryText.value = payload && typeof payload.query === "string" ? payload.query : "";
+    const normalizedQueries = queries.replaceAll(payload ? payload.query : []);
+    elements.queryText.value = "";
+    updateQueryStart(null, false);
+    elements.legacyQueryWarning.classList.toggle("hidden", !normalizedQueries.legacy);
     annotations.replaceAll(payload && Array.isArray(payload.annotation) ? payload.annotation : []);
     elements.annotationText.value = "";
     elements.jsonFilename.value = baseName(videoRecord.original_filename) + "_" + task.id.slice(0, 8) + ".json";
@@ -696,7 +951,8 @@
   });
 
   function initialize() {
-    wireTextPreset({
+    populateAnnotationActions();
+    renderQueryPresets = wireTextPreset({
       collection: queryPresets,
       select: $("query-preset-select"),
       nameInput: $("query-preset-name"),
@@ -708,7 +964,7 @@
       label: "Query ",
       affectsData: true
     });
-    wireTextPreset({
+    renderTextPresets = wireTextPreset({
       collection: textPresets,
       select: $("text-preset-select"),
       nameInput: $("text-preset-name"),
@@ -731,6 +987,12 @@
     bindEvents();
     updatePreview();
     dirty = false;
+    if (presetProtection.safe === false) {
+      elements.presetBackupStatus.textContent = "浏览器未允许读取或写入 LocalStorage；未进行模板迁移，也未覆盖任何已有键。请先确认站点存储权限。";
+      showMessage("无法创建迁移前保护备份，因此已停止模板存储迁移。当前页面不会覆盖原有模板键。", "error", true);
+    } else if (presetProtection.backupCreated) {
+      elements.presetBackupStatus.textContent = "已在 LocalStorage 中创建迁移前快照（schema v2）。建议立即点击“导出全部模板”并另存 JSON。";
+    }
     const onlineRequested = namespace.Cloud && namespace.Cloud.wantsOnlineMode();
     if (onlineRequested && namespace.Cloud.isConfigured()) {
       const controller = new namespace.OnlineTaskController(namespace.AnnotatorApp);

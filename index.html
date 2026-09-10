@@ -127,6 +127,29 @@
             <button id="delete-query-preset" class="button small danger-ghost offline-only" type="button">删除模板</button>
           </div>
           <textarea id="query-text" rows="3" placeholder="输入用户的动作指导请求"></textarea>
+          <div class="query-instance-editor">
+            <div class="time-input-group">
+              <label for="query-start-input">Query Start</label>
+              <div class="time-input"><input id="query-start-input" type="number" min="0" step="0.01" placeholder="--"><span>s</span></div>
+              <strong id="query-start-display" class="query-start-display">-- s</strong>
+            </div>
+            <div class="query-time-actions">
+              <button id="set-query-current-button" class="button secondary" type="button">当前时间设为 Query Start</button>
+              <button id="select-query-timeline-button" class="button secondary" type="button">在时间轴选择</button>
+              <button id="clear-query-time-button" class="button secondary" type="button">清除时间</button>
+            </div>
+            <div class="query-save-actions">
+              <button id="save-query-button" class="button primary" type="button">+ 添加 Query</button>
+              <button id="cancel-query-edit-button" class="button secondary hidden" type="button">取消编辑</button>
+            </div>
+          </div>
+          <div id="legacy-query-warning" class="inline-warning hidden">旧格式 Query 已载入，0.00 只是兼容初始化值，请确认每条 Query Start 时间。</div>
+          <div class="query-list-section">
+            <div class="section-heading compact-heading">
+              <div><h3 id="queries-title">Queries (0)</h3><p>按 start_time_sec 升序排列；模板只复制文字，不保存时间。</p></div>
+            </div>
+            <div id="query-list" class="query-list"><div class="empty-state compact-empty-state">尚未添加 Query instance</div></div>
+          </div>
         </div>
       </div>
     </section>
@@ -136,7 +159,7 @@
         <div class="section-heading compact-heading">
           <div>
             <h2>视频与精确时间轴</h2>
-            <p>标注模式：点击依次设置 Start / End；定位模式：点击跳转播放位置。</p>
+            <p>Response Window 设置 Start/End；Query Time 设置单个 Q 时间点；定位模式只跳转。</p>
           </div>
           <label class="speed-control" for="playback-rate">倍速
             <select id="playback-rate">
@@ -164,8 +187,9 @@
 
         <div class="timeline-toolbar">
           <div class="segmented" aria-label="时间轴模式">
-            <button id="mode-annotate" class="segment active" type="button" aria-pressed="true">标注模式</button>
-            <button id="mode-seek" class="segment" type="button" aria-pressed="false">定位模式</button>
+            <button id="mode-seek" class="segment" type="button" aria-pressed="false">定位</button>
+            <button id="mode-annotate" class="segment active" type="button" aria-pressed="true">Response Window</button>
+            <button id="mode-query" class="segment" type="button" aria-pressed="false">Query Time</button>
           </div>
           <span id="timeline-mode-status" class="mode-status">下一次点击：设置 Start</span>
           <div class="zoom-controls" aria-label="时间轴缩放">
@@ -189,6 +213,7 @@
               <div id="timeline-progress" class="timeline-progress"></div>
               <button id="start-handle" class="timeline-handle start hidden" type="button" aria-label="拖动 Start"></button>
               <button id="end-handle" class="timeline-handle end hidden" type="button" aria-label="拖动 End"></button>
+              <button id="query-marker" class="timeline-query-marker hidden" type="button" aria-label="拖动当前 Query Start">Q</button>
               <div id="playhead" class="playhead" aria-hidden="true"></div>
             </div>
             <div class="timeline-edge-labels"><span>0.00</span><span id="timeline-end-label">0.00</span></div>
@@ -245,6 +270,11 @@
           <p>填写当前时间窗口对应的指导或纠错文本。</p>
         </div>
       </div>
+      <div class="annotation-action-control">
+        <label for="annotation-action">Action</label>
+        <select id="annotation-action" aria-label="Response Action"></select>
+        <span class="field-help">当前正式支持 [feedback]</span>
+      </div>
       <div class="preset-toolbar">
         <select id="text-preset-select" aria-label="Text 模板"></select>
         <input id="text-preset-name" class="offline-only" type="text" placeholder="模板名称" aria-label="Text 模板名称">
@@ -260,9 +290,24 @@
         <button id="online-submit" class="button primary large online-only hidden" type="button">提交完成</button>
         <button id="online-next-incomplete" class="button secondary online-only hidden" type="button">下一条未完成任务</button>
         <span id="online-save-state" class="save-state online-only hidden">Not saved</span>
-        <span class="shortcut-hint">快捷键：S / E 设置边界，A 添加，R 播放区间，Ctrl+S 下载</span>
+        <span class="shortcut-hint">快捷键：Q 设置 Query Start，S / E 设置边界，A 添加，R 播放区间，Ctrl+S 下载</span>
       </div>
       <div id="online-completed-warning" class="inline-warning online-only hidden">该任务已完成；继续编辑并重新保存会更新云端结果。</div>
+    </section>
+
+    <section class="card preset-backup-card offline-only">
+      <div class="section-heading compact-heading">
+        <div>
+          <h2>模板备份</h2>
+          <p>一次备份当前浏览器真正使用的 Query、Text、Video Root 与设置；导入始终采用 Merge，不删除现有模板。</p>
+        </div>
+        <div class="button-row wrap">
+          <button id="export-presets-button" class="button primary" type="button">导出全部模板</button>
+          <button id="import-presets-button" class="button secondary" type="button">导入模板备份</button>
+          <input id="import-presets-file" class="hidden" type="file" accept="application/json,.json">
+        </div>
+      </div>
+      <div id="preset-backup-status" class="field-help">现有 LocalStorage 键保持不变；导入不会执行 replace 或 localStorage.clear()。</div>
     </section>
 
     <section class="card export-card">
@@ -295,6 +340,7 @@
   <script src="./js/video.js"></script>
   <script src="./js/timeline.js"></script>
   <script src="./js/annotation.js"></script>
+  <script src="./js/query.js"></script>
   <script src="./js/json-export.js"></script>
   <script src="./js/online-templates.js"></script>
   <script src="./js/online-annotations.js"></script>

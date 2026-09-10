@@ -10,17 +10,41 @@ FitInteract Quick Annotator 是一个无需构建的静态网页应用，支持�
 ```json
 {
   "video_path": "SPRINT/long_context_clips/uuid__video.mp4",
-  "query": "标注问题",
+  "query": [
+    {
+      "start_time_sec": 0.00,
+      "text": "标注问题"
+    }
+  ],
   "annotation": [
     {
       "time_window_sec": { "start": 4.5, "end": 6 },
+      "action": "[feedback]",
       "text": "反馈文本"
     }
   ]
 }
 ```
 
-时间值最多保留两位小数。Online Mode 中 `video_path` 固定为 `videos.storage_path`，不会写入签名 URL或本机路径。
+`query` 从 v2 起是数组，并可包含多条 Query instance；每条 Query 只有一个 `start_time_sec`，不含 `end_time_sec`。`annotation[].time_window_sec` 仍然是 Response 的 `{start, end}` 时间窗口，结构没有改变。时间值最多保留两位小数。Online Mode 中 `video_path` 固定为 `videos.storage_path`，不会写入签名 URL 或本机路径。
+
+当前 v3 示例文件位于 [`../download/fitinteract_data_structure.v3.template.json`](../download/fitinteract_data_structure.v3.template.json)。旧的 `fitinteract_data_structure.template.json` 和 v2 示例均保留不变，便于追溯旧数据格式。
+
+## Query Timestamp
+
+Query 表示用户在视频或连续交互中的一次发言/请求。每条 Query instance 由 `text` 和单个 `start_time_sec` 组成，只标记发言出现的开始位置，不标结束时间；目前需要的是用户请求在连续视频中的出现位置。由于一个视频未来可能包含多次发言，`query` 从一开始就采用数组。
+
+Response annotation 的含义不同：它仍使用 `time_window_sec.start/end` 描述反馈所对应的完整时间窗口。Query 单点时间不会复用或改变 Response Start/End。
+
+## Annotation Action
+
+每条 Response annotation 现在严格包含 `time_window_sec`、`action` 和 `text`：
+
+- `time_window_sec`：允许产生该响应的时间窗口。
+- `action`：响应的行为或性质标签。
+- `text`：实际输出的语言内容。
+
+当前正式支持的 action 只有 `[feedback]`，新建标注和载入旧的无-action 标注时都会默认使用该值。Action selector 与 Text Template 相互独立；action 不会写入 Text presets。以后确定其他 action 类型时，只需扩展 selector 的选项列表。
 
 ## Offline Mode
 
@@ -29,6 +53,7 @@ FitInteract Quick Annotator 是一个无需构建的静态网页应用，支持�
 - 用文件选择器选择本机视频，并通过 `URL.createObjectURL(file)` 播放；视频不上传。
 - Timeline、Start/End、快捷键及 0.01 秒精度保持不变。
 - Query、Text、Video Root presets 与草稿保存在 `localStorage`。
+- 每个 Query instance 可通过当前播放时间、手工输入或 Timeline 的 `Query Time` 模式设置单个起始时刻；支持新增、定位、编辑、删除和按时间自动排序。
 - Annotation 可新增、编辑、删除；JSON Preview 与 Blob 下载正常工作。
 
 浏览器不会向网页暴露所选文件的真实 Windows 绝对路径。刷新页面后必须重新选择视频。`file://` 与 HTTPS 站点属于不同来源，两边的 `localStorage` 不会自动互通。
@@ -102,9 +127,9 @@ Online Mode 是显式的协作模式：管理员选择上传的视频会发送�
 ## 标注操作
 
 1. Offline Mode 选择本地视频；Online Mode 从自己的任务列表打开任务。
-2. 选择或填写 Query。
-3. 在 Timeline 标注模式中第一次点击设置 Start，第二次点击设置 End；也可拖动 handles 或用当前播放时间写入。
-4. 选择或填写 Response/Text，新增或更新 annotation。
+2. 选择或填写 Query，设置 `Query Start` 后点击“添加 Query”；同一视频可添加多条，列表会按时间排序。
+3. Timeline 的三种模式互不混淆：`定位` 只跳转视频；`Response Window` 第一次点击设置 Response Start、第二次设置 Response End；`Query Time` 单击只设置当前 Query Start。橙色 `Q` 标记可拖动。
+4. 选择或填写 Response/Text，新增或更新 annotation。Query 的单点时间和 Response 的起止窗口是两个独立概念。
 5. 检查 JSON Preview。Offline 可下载 JSON；Online 可保存草稿或 Submit。
 
 主要快捷键：
@@ -113,6 +138,7 @@ Online Mode 是显式的协作模式：管理员选择上传的视频会发送�
 | --- | --- |
 | Space | 播放/暂停 |
 | S / E | 当前时间设为 Start / End |
+| Q | 当前播放时间设为 Query Start |
 | A | 新增或更新 annotation |
 | R | 播放当前区间 |
 | Ctrl + S | 校验并下载 JSON |
@@ -130,8 +156,15 @@ Offline Mode 使用这些版本化键：
 - `fitinteract_video_path_history_v1`
 - `fitinteract_settings_v1`
 - `fitinteract_draft_v1`
+- `fitinteract_presets_schema_version`（当前为 `2`）
+- `fitinteract_presets_migration_backup_v1`（首次升级前的自动保护快照）
+- `fitinteract_draft_query_migration_backup_v1`（发现旧 `query:string` 草稿时的原始备份）
 
-LocalStorage 不包含视频文件本身。清除浏览器站点数据会清除这些 presets 与草稿。
+原有 Query/Text/Video Root/settings 键名保持不变。页面首次执行 schema v2 保护时，会先把旧键和原始字符串写入迁移快照；若快照无法成功写入，则停止迁移且不覆盖旧模板键。加载旧草稿中的 `query:string` 时，会兼容转换为 `[{"start_time_sec": 0, "text": "..."}]` 并显示提醒，供标注员确认时间。
+
+“模板备份”区可将当前浏览器实际可见的 Query presets、Text presets、Video Roots 和 settings 导出为 `fitinteract_presets_backup.json`。导入固定使用 **MERGE**：现有数据优先，相同 ID 或“同名且同内容”跳过，同名但内容不同的条目保留为两条；导入不会使用 replace，也不会调用 `localStorage.clear()`。
+
+`file://` 与 GitHub Pages/HTTPS 是不同来源，其 LocalStorage 不互通；从本地切换到线上前，请在原页面先导出模板备份，再到新站点导入。LocalStorage 不包含视频文件本身。清除浏览器站点数据会清除这些 presets、草稿与迁移快照。
 
 ## 项目结构
 
@@ -146,7 +179,7 @@ web/
 │   └── admin.css
 ├── js/
 │   ├── app.js                    # 原标注器与模式桥接
-│   ├── video.js / timeline.js / annotation.js
+│   ├── video.js / timeline.js / annotation.js / query.js
 │   ├── presets.js / json-export.js
 │   ├── supabase-config.js / supabase-client.js / auth.js
 │   ├── online-tasks.js / online-templates.js / online-annotations.js
