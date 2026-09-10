@@ -41,10 +41,10 @@ Response annotation 的含义不同：它仍使用 `time_window_sec.start/end` �
 每条 Response annotation 现在严格包含 `time_window_sec`、`action` 和 `text`：
 
 - `time_window_sec`：允许产生该响应的时间窗口。
-- `action`：响应的行为或性质标签。
-- `text`：实际输出的语言内容。
+- `action`：字符串形式的一个或多个连续行为标签，例如 `[feedback]` 或 `[inform][encourage]`；不会转换为数组，也不限制标签名称白名单。
+- `text`：实际输出的语言内容，类型始终为字符串；无语言输出时允许保存为空字符串 `""`。
 
-内置 action 只有 `[feedback]`，新建标注和载入旧的无-action 标注时都会默认使用该值。Action selector 与 Text Template 相互独立；action 不会写入 Text presets。Offline Mode 可以新增、更新和删除用户 Action presets，输入 `feedback` 或 `[feedback]` 都会统一规范化为 `[feedback]`。内置 `[feedback]` 不能修改或删除；删除用户 preset 不会改变已经创建的 annotation。
+内置 action 只有 `[feedback]`，新建标注和载入旧的无-action 标注时都会默认使用该值。Action selector 与 Text Template 相互独立；action 不会写入 Text presets。Offline Mode 可以新增、更新和删除用户 Action presets：输入 `feedback` 会规范化为 `[feedback]`，输入 `inform, encourage`、`inform encourage`、`[inform][encourage]` 或 `[[inform]][[encourage]]` 都会规范化为 `[inform][encourage]`。组合 Action 仍保存在 `fitinteract_action_presets_v1` 中。内置 `[feedback]` 不能修改或删除；删除用户 preset 不会改变已经创建的 annotation。
 
 ## Offline Mode
 

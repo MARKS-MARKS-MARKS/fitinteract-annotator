@@ -59,15 +59,40 @@
   }
 
   function normalizeActionPresetValue(value) {
-    let action = String(value || "").trim();
-    while (action.length >= 2 && action.startsWith("[") && action.endsWith("]")) {
-      action = action.slice(1, -1).trim();
-    }
+    const action = String(value || "").trim();
     if (!action) throw new Error("Action 不能为空。");
-    if (action.includes("[") || action.includes("]")) {
-      throw new Error("Action 方括号格式无效，请输入 feedback 或 [feedback]。");
+
+    const tags = [];
+    const bracketedTag = /\[+\s*([^\[\]]*?)\s*\]+/g;
+    let lastIndex = 0;
+    let match;
+    while ((match = bracketedTag.exec(action)) !== null) {
+      if (action.slice(lastIndex, match.index).trim()) {
+        throw new Error("Action 格式无效，请输入一个或多个连续的 [tag]。");
+      }
+      const tag = match[1].trim();
+      if (!tag) throw new Error("Action tag 不能为空。");
+      tags.push(tag);
+      lastIndex = bracketedTag.lastIndex;
     }
-    return "[" + action + "]";
+
+    if (tags.length) {
+      if (action.slice(lastIndex).trim()) {
+        throw new Error("Action 格式无效，请输入一个或多个连续的 [tag]。");
+      }
+      return tags.map((tag) => "[" + tag + "]").join("");
+    }
+
+    if (action.includes("[") || action.includes("]")) {
+      throw new Error("Action 方括号格式无效，请输入 feedback 或 [inform][encourage]。");
+    }
+
+    const groups = action.split(",");
+    if (groups.some((group) => !group.trim())) throw new Error("Action tag 不能为空。");
+    groups.forEach((group) => {
+      group.trim().split(/\s+/).forEach((tag) => tags.push(tag));
+    });
+    return tags.map((tag) => "[" + tag + "]").join("");
   }
 
   class StorageService {

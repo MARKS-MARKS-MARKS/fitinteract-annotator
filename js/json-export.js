@@ -61,8 +61,18 @@
         if (!Number.isFinite(start) || !Number.isFinite(end)) errors.push(prefix + "Start / End 无效。");
         else if (start < 0 || end <= start) errors.push(prefix + "必须满足 0 ≤ Start < End。");
         else if (hasDuration && end > duration + 0.005) errors.push(prefix + "End 不能超过视频时长。");
-        if (typeof item.action !== "string" || !item.action.trim()) errors.push("Annotation #" + (index + 1) + " 缺少 Action。");
-        if (!String(item.text || "").trim()) errors.push(prefix + "Text 不能为空。");
+        if (typeof item.action !== "string" || !item.action.trim()) {
+          errors.push("Annotation #" + (index + 1) + " 缺少 Action。");
+        } else {
+          try {
+            if (namespace.normalizeActionPresetValue(item.action) !== item.action.trim()) {
+              errors.push(prefix + "Action 必须由一个或多个有效的 [tag] 组成。");
+            }
+          } catch (error) {
+            errors.push(prefix + error.message);
+          }
+        }
+        if (typeof item.text !== "string") errors.push(prefix + "Text 必须是字符串。");
       });
     }
     return errors;
