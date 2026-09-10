@@ -35,7 +35,11 @@
     queryList: $("query-list"),
     queriesTitle: $("queries-title"),
     legacyQueryWarning: $("legacy-query-warning"),
+    actionPresetSelect: $("action-preset-select"),
     annotationAction: $("annotation-action"),
+    saveActionPreset: $("save-action-preset"),
+    updateActionPreset: $("update-action-preset"),
+    deleteActionPreset: $("delete-action-preset"),
     annotationText: $("annotation-text"),
     startInput: $("start-input"),
     endInput: $("end-input"),
@@ -84,6 +88,7 @@
   let onlineDirtyHandler = null;
   let renderQueryPresets = null;
   let renderTextPresets = null;
+  let renderActionPresets = null;
 
   function showMessage(message, type, sticky) {
     window.clearTimeout(messageTimer);
@@ -107,6 +112,9 @@
   );
   const textPresets = new namespace.PresetCollection(
     storage, namespace.STORAGE_KEYS.textPresets, namespace.PRESET_DEFAULTS.textPresets, "text"
+  );
+  const actionPresets = new namespace.PresetCollection(
+    storage, namespace.STORAGE_KEYS.actionPresets, namespace.PRESET_DEFAULTS.actionPresets, "action"
   );
   const videoRoots = new namespace.PresetCollection(
     storage, namespace.STORAGE_KEYS.videoRoots, namespace.PRESET_DEFAULTS.videoRoots, "root"
@@ -226,6 +234,7 @@
     onEdit: (annotation) => {
       timeline.setSelection(annotation.time_window_sec.start, annotation.time_window_sec.end);
       elements.annotationAction.value = annotation.action;
+      selectActionPresetForValue(annotation.action);
       elements.annotationText.value = annotation.text;
       elements.saveAnnotation.textContent = "更新 Annotation";
       elements.cancelEdit.classList.remove("hidden");
@@ -233,7 +242,6 @@
     },
     onEditState: (annotation) => {
       if (!annotation) {
-        resetAnnotationAction();
         elements.saveAnnotation.textContent = "+ 添加 Annotation";
         elements.cancelEdit.classList.add("hidden");
       }
@@ -280,19 +288,9 @@
     }
   }
 
-  function populateAnnotationActions() {
-    elements.annotationAction.textContent = "";
-    namespace.ANNOTATION_ACTIONS.forEach((action) => {
-      const option = document.createElement("option");
-      option.value = action;
-      option.textContent = action;
-      elements.annotationAction.appendChild(option);
-    });
-    resetAnnotationAction();
-  }
-
-  function resetAnnotationAction() {
-    elements.annotationAction.value = namespace.ANNOTATION_ACTIONS[0];
+  function selectActionPresetForValue(value) {
+    const match = actionPresets.all().find((item) => item.value === value);
+    elements.actionPresetSelect.value = match ? match.id : "";
   }
 
   function updateQueryStart(time, shouldMarkDirty) {
@@ -489,20 +487,77 @@
     return render;
   }
 
+  function wireActionPreset() {
+    const render = (selectedId) => {
+      namespace.populatePresetSelect(elements.actionPresetSelect, actionPresets.all(), "选择 Action 模板");
+      if (selectedId && actionPresets.find(selectedId)) elements.actionPresetSelect.value = selectedId;
+    };
+    const normalizedInput = () => {
+      const value = namespace.normalizeActionPresetValue(elements.annotationAction.value);
+      elements.annotationAction.value = value;
+      return value;
+    };
+
+    elements.actionPresetSelect.addEventListener("change", () => {
+      const item = actionPresets.find(elements.actionPresetSelect.value);
+      if (item) elements.annotationAction.value = item.value;
+    });
+    elements.saveActionPreset.addEventListener("click", () => {
+      try {
+        const value = normalizedInput();
+        const item = actionPresets.add(value, value);
+        render(item.id);
+        showMessage("Action 模板已保存。", "success");
+      } catch (error) { showMessage(error.message, "error"); }
+    });
+    elements.updateActionPreset.addEventListener("click", () => {
+      try {
+        const selected = actionPresets.find(elements.actionPresetSelect.value);
+        if (!selected) throw new Error("请先选择要更新的 Action 模板。");
+        if (selected.id === "action-feedback") throw new Error("内置 [feedback] 不能修改。");
+        const value = normalizedInput();
+        const item = actionPresets.update(selected.id, value, value);
+        render(item.id);
+        showMessage("Action 模板已更新。", "success");
+      } catch (error) { showMessage(error.message, "error"); }
+    });
+    elements.deleteActionPreset.addEventListener("click", () => {
+      try {
+        const selected = actionPresets.find(elements.actionPresetSelect.value);
+        if (!selected) throw new Error("请先选择要删除的 Action 模板。");
+        if (selected.id === "action-feedback") throw new Error("内置 [feedback] 不能删除。");
+        if (!window.confirm("确定删除 Action 模板“" + selected.value + "”吗？已有 Annotation 不会改变。")) return;
+        actionPresets.delete(selected.id);
+        render();
+        showMessage("Action 模板已删除；已有 Annotation 保持不变。", "success");
+      } catch (error) { showMessage(error.message, "error"); }
+    });
+
+    render();
+    const initial = actionPresets.all().find((item) => item.value === "[feedback]") || actionPresets.all()[0];
+    if (initial) {
+      elements.actionPresetSelect.value = initial.id;
+      elements.annotationAction.value = initial.value;
+    }
+    return render;
+  }
+
   function downloadPresetBackup() {
     const backup = {
       format: "FitInteractPresetBackup",
-      version: 1,
+      version: 2,
       exported_at: new Date().toISOString(),
       preset_schema_version: 2,
       storage_keys: {
         query_presets: namespace.STORAGE_KEYS.queryPresets,
         text_presets: namespace.STORAGE_KEYS.textPresets,
+        action_presets: namespace.STORAGE_KEYS.actionPresets,
         video_roots: namespace.STORAGE_KEYS.videoRoots,
         settings: namespace.STORAGE_KEYS.settings
       },
       query_presets: queryPresets.all(),
       text_presets: textPresets.all(),
+      action_presets: actionPresets.all().map((item) => item.value),
       video_roots: videoRoots.all(),
       settings: JSON.parse(JSON.stringify(settings))
     };
@@ -518,19 +573,22 @@
       link.remove();
       window.setTimeout(() => URL.revokeObjectURL(url), 0);
     }
-    elements.presetBackupStatus.textContent = "已导出：Query " + backup.query_presets.length + "，Text " + backup.text_presets.length + "，Video Root " + backup.video_roots.length + "。";
+    elements.presetBackupStatus.textContent = "已导出：Query " + backup.query_presets.length + "，Text " + backup.text_presets.length + "，Action " + backup.action_presets.length + "，Video Root " + backup.video_roots.length + "。";
     showMessage("模板备份已生成，请妥善保存 fitinteract_presets_backup.json。", "success");
   }
 
   function validatePresetBackup(backup) {
-    if (!backup || backup.format !== "FitInteractPresetBackup" || backup.version !== 1) {
-      throw new Error("不是有效的 FitInteractPresetBackup v1 文件。");
+    if (!backup || backup.format !== "FitInteractPresetBackup" || ![1, 2].includes(backup.version)) {
+      throw new Error("不是有效的 FitInteractPresetBackup v1/v2 文件。");
     }
     if (!Array.isArray(backup.query_presets) || !Array.isArray(backup.text_presets)) {
       throw new Error("备份缺少 query_presets 或 text_presets 数组。");
     }
     if (backup.video_roots !== undefined && !Array.isArray(backup.video_roots)) {
       throw new Error("video_roots 必须是数组。");
+    }
+    if (backup.action_presets !== undefined && !Array.isArray(backup.action_presets)) {
+      throw new Error("action_presets 必须是数组。");
     }
     const validateItems = (items, label) => {
       items.forEach((item, index) => {
@@ -548,6 +606,10 @@
     validateItems(backup.query_presets, "Query preset");
     validateItems(backup.text_presets, "Text preset");
     validateItems(backup.video_roots || [], "Video Root");
+    (backup.action_presets || []).forEach((action, index) => {
+      if (typeof action !== "string") throw new Error("Action preset #" + (index + 1) + " 必须是字符串。");
+      namespace.normalizeActionPresetValue(action);
+    });
     if (backup.settings !== undefined && (!backup.settings || typeof backup.settings !== "object" || Array.isArray(backup.settings))) {
       throw new Error("settings 必须是对象。");
     }
@@ -560,15 +622,20 @@
     validatePresetBackup(backup);
     const queryCount = backup.query_presets.length;
     const textCount = backup.text_presets.length;
+    const actionCount = Array.isArray(backup.action_presets) ? backup.action_presets.length : 0;
     const rootCount = Array.isArray(backup.video_roots) ? backup.video_roots.length : 0;
     const proceed = window.confirm(
-      "将以 MERGE 方式导入：\nQuery " + queryCount + " 条\nText " + textCount + " 条\nVideo Root " + rootCount +
+      "将以 MERGE 方式导入：\nQuery " + queryCount + " 条\nText " + textCount + " 条\nAction " + actionCount + " 条\nVideo Root " + rootCount +
       " 条\n\n现有模板不会被删除或覆盖；同名但内容不同的模板会同时保留。继续吗？"
     );
     if (!proceed) return;
 
     const queryResult = queryPresets.merge(backup.query_presets);
     const textResult = textPresets.merge(backup.text_presets);
+    const actionResult = actionPresets.merge((backup.action_presets || []).map((action) => {
+      const value = namespace.normalizeActionPresetValue(action);
+      return { name: value, value: value };
+    }));
     const rootResult = videoRoots.merge(backup.video_roots || []);
     if (backup.settings && typeof backup.settings === "object" && !Array.isArray(backup.settings)) {
       if ([1, 2, 4, 8].includes(Number(backup.settings.timelineZoom))) settings.timelineZoom = Number(backup.settings.timelineZoom);
@@ -581,9 +648,11 @@
     }
     renderQueryPresets();
     renderTextPresets();
+    renderActionPresets();
+    selectActionPresetForValue(elements.annotationAction.value);
     renderRoots();
-    const added = queryResult.added + textResult.added + rootResult.added;
-    elements.presetBackupStatus.textContent = "Merge 完成：新增 Query " + queryResult.added + "，Text " + textResult.added + "，Video Root " + rootResult.added + "；原有模板 0 删除。";
+    const added = queryResult.added + textResult.added + actionResult.added + rootResult.added;
+    elements.presetBackupStatus.textContent = "Merge 完成：新增 Query " + queryResult.added + "，Text " + textResult.added + "，Action " + actionResult.added + "，Video Root " + rootResult.added + "；原有模板 0 删除。";
     showMessage("模板备份导入完成，共新增 " + added + " 条；没有删除或覆盖当前模板。", "success", true);
   }
 
@@ -621,13 +690,21 @@
       showMessage("请先设置有效的 Start 和 End。", "error");
       return;
     }
+    let action;
+    try {
+      action = namespace.normalizeActionPresetValue(elements.annotationAction.value);
+      elements.annotationAction.value = action;
+    } catch (error) {
+      showMessage(error.message, "error");
+      return;
+    }
     const wasEditing = annotations.isEditing();
     const result = annotations.save(
       selection.start,
       selection.end,
       elements.annotationText.value,
       video.duration,
-      elements.annotationAction.value
+      action
     );
     if (!result.ok) {
       showMessage(result.errors.join("\n"), "error", true);
@@ -951,7 +1028,7 @@
   });
 
   function initialize() {
-    populateAnnotationActions();
+    renderActionPresets = wireActionPreset();
     renderQueryPresets = wireTextPreset({
       collection: queryPresets,
       select: $("query-preset-select"),

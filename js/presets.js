@@ -5,6 +5,7 @@
     settings: "fitinteract_settings_v1",
     queryPresets: "fitinteract_query_presets_v1",
     textPresets: "fitinteract_text_presets_v1",
+    actionPresets: "fitinteract_action_presets_v1",
     videoRoots: "fitinteract_video_roots_v1",
     videoPathHistory: "fitinteract_video_path_history_v1",
     draft: "fitinteract_draft_v1",
@@ -28,6 +29,13 @@
         value: "注意膝盖有些内扣，让膝盖朝脚尖方向移动。"
       }
     ],
+    actionPresets: [
+      {
+        id: "action-feedback",
+        name: "[feedback]",
+        value: "[feedback]"
+      }
+    ],
     videoRoots: [
       {
         id: "root-sprint",
@@ -48,6 +56,18 @@
 
   function createId(prefix) {
     return prefix + "-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 8);
+  }
+
+  function normalizeActionPresetValue(value) {
+    let action = String(value || "").trim();
+    while (action.length >= 2 && action.startsWith("[") && action.endsWith("]")) {
+      action = action.slice(1, -1).trim();
+    }
+    if (!action) throw new Error("Action 不能为空。");
+    if (action.includes("[") || action.includes("]")) {
+      throw new Error("Action 方括号格式无效，请输入 feedback 或 [feedback]。");
+    }
+    return "[" + action + "]";
   }
 
   class StorageService {
@@ -199,6 +219,7 @@
       const trackedKeys = [
         STORAGE_KEYS.queryPresets,
         STORAGE_KEYS.textPresets,
+        STORAGE_KEYS.actionPresets,
         STORAGE_KEYS.videoRoots,
         STORAGE_KEYS.settings,
         STORAGE_KEYS.videoPathHistory,
@@ -213,6 +234,7 @@
         source_schema_version: version,
         query_presets: storage.read(STORAGE_KEYS.queryPresets, []),
         text_presets: storage.read(STORAGE_KEYS.textPresets, []),
+        action_presets: storage.read(STORAGE_KEYS.actionPresets, []),
         video_roots: storage.read(STORAGE_KEYS.videoRoots, []),
         settings: storage.read(STORAGE_KEYS.settings, {}),
         raw_storage: rawStorage
@@ -256,6 +278,7 @@
   namespace.PRESET_DEFAULTS = DEFAULTS;
   namespace.StorageService = StorageService;
   namespace.PresetCollection = PresetCollection;
+  namespace.normalizeActionPresetValue = normalizeActionPresetValue;
   namespace.protectPresetStorage = protectPresetStorage;
   namespace.populatePresetSelect = populatePresetSelect;
 })(window.FitInteract = window.FitInteract || {});

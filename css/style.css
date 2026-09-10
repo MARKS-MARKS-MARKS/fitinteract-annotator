@@ -408,9 +408,11 @@ input[type="file"] {
 .annotation-buttons { display: flex; gap: 6px; flex-wrap: wrap; }
 .empty-state { padding: 30px 12px; color: var(--muted); text-align: center; border: 1px dashed var(--border-strong); border-radius: 5px; }
 
-.annotation-action-control { display: flex; align-items: center; gap: 9px; margin-bottom: 10px; flex-wrap: wrap; }
-.annotation-action-control label { font-weight: 700; }
-.annotation-action-control select { width: 190px; }
+.annotation-action-control { margin-bottom: 10px; }
+.annotation-action-control > label { display: block; margin-bottom: 6px; font-weight: 700; }
+.action-preset-toolbar { margin-bottom: 5px; }
+.action-preset-toolbar select { flex: 0 1 240px; }
+.action-preset-toolbar input { flex: 1 1 260px; }
 .text-card textarea { margin-top: 10px; }
 .annotation-actions { margin-top: 12px; }
 .shortcut-hint { margin-left: auto; color: var(--muted); font-size: 12px; }

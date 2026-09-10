@@ -44,7 +44,7 @@ Response annotation 的含义不同：它仍使用 `time_window_sec.start/end` �
 - `action`：响应的行为或性质标签。
 - `text`：实际输出的语言内容。
 
-当前正式支持的 action 只有 `[feedback]`，新建标注和载入旧的无-action 标注时都会默认使用该值。Action selector 与 Text Template 相互独立；action 不会写入 Text presets。以后确定其他 action 类型时，只需扩展 selector 的选项列表。
+内置 action 只有 `[feedback]`，新建标注和载入旧的无-action 标注时都会默认使用该值。Action selector 与 Text Template 相互独立；action 不会写入 Text presets。Offline Mode 可以新增、更新和删除用户 Action presets，输入 `feedback` 或 `[feedback]` 都会统一规范化为 `[feedback]`。内置 `[feedback]` 不能修改或删除；删除用户 preset 不会改变已经创建的 annotation。
 
 ## Offline Mode
 
@@ -152,6 +152,7 @@ Offline Mode 使用这些版本化键：
 
 - `fitinteract_query_presets_v1`
 - `fitinteract_text_presets_v1`
+- `fitinteract_action_presets_v1`
 - `fitinteract_video_roots_v1`
 - `fitinteract_video_path_history_v1`
 - `fitinteract_settings_v1`
@@ -162,7 +163,7 @@ Offline Mode 使用这些版本化键：
 
 原有 Query/Text/Video Root/settings 键名保持不变。页面首次执行 schema v2 保护时，会先把旧键和原始字符串写入迁移快照；若快照无法成功写入，则停止迁移且不覆盖旧模板键。加载旧草稿中的 `query:string` 时，会兼容转换为 `[{"start_time_sec": 0, "text": "..."}]` 并显示提醒，供标注员确认时间。
 
-“模板备份”区可将当前浏览器实际可见的 Query presets、Text presets、Video Roots 和 settings 导出为 `fitinteract_presets_backup.json`。导入固定使用 **MERGE**：现有数据优先，相同 ID 或“同名且同内容”跳过，同名但内容不同的条目保留为两条；导入不会使用 replace，也不会调用 `localStorage.clear()`。
+“模板备份”区可将当前浏览器实际可见的 Query presets、Text presets、Action presets、Video Roots 和 settings 导出为 `FitInteractPresetBackup` v2 文件 `fitinteract_presets_backup.json`。其中 `action_presets` 是规范化后的字符串数组。导入固定使用 **MERGE**：现有数据优先，相同 ID 或“同名且同内容”跳过，同名但内容不同的 Query/Text 条目保留为两条；导入不会使用 replace，也不会调用 `localStorage.clear()`。旧的 v1 backup 没有 `action_presets` 时仍可正常导入，其余模板照常合并，当前 Action presets 保持不变。
 
 `file://` 与 GitHub Pages/HTTPS 是不同来源，其 LocalStorage 不互通；从本地切换到线上前，请在原页面先导出模板备份，再到新站点导入。LocalStorage 不包含视频文件本身。清除浏览器站点数据会清除这些 presets、草稿与迁移快照。
 
